@@ -1,0 +1,29 @@
+
+# Terraform state files
+terraform.tfstate
+terraform.tfstate.backup
+*.tfstate
+*.tfstate.*
+
+# Crash log files
+crash.log
+
+# .terraform working directory
+.terraform/
+
+# Sensitive variable overrides
+*.tfvars
+*.tfvars.json
+envs/*/*.tfvars
+
+# Local .terraformrc and override files
+.terraformrc
+terraform.rc
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# OS generated files
+.DS_Store
+Thumbs.db
