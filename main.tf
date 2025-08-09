@@ -57,7 +57,8 @@ resource "aws_instance" "laravel" {
   user_data_replace_on_change = true
 
   metadata_options {
-    http_tokens = "optional"
+    http_tokens   = "required" # Require IMDSv2
+    http_endpoint = "enabled"  # Enable IMDS (usually enabled)
   }
 
   tags = {
@@ -161,14 +162,15 @@ module "rds" {
   family               = "mariadb11.4"
   instance_class       = "db.t3.micro"
 
-  allocated_storage   = 20
-  db_name             = var.db_name
-  username            = var.db_user
-  password            = var.db_password
-  port                = 3306
-  multi_az            = false
-  publicly_accessible = false
-  skip_final_snapshot = true
+  allocated_storage           = 20
+  db_name                     = var.db_name
+  username                    = var.db_user
+  password                    = var.db_password
+  manage_master_user_password = false
+  port                        = 3306
+  multi_az                    = false
+  publicly_accessible         = false
+  skip_final_snapshot         = true
 
   create_db_subnet_group = true
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
@@ -197,6 +199,15 @@ resource "aws_s3_bucket_versioning" "uploads" {
   }
 }
 
+resource "aws_s3_bucket_public_access_block" "uploads" {
+  bucket = aws_s3_bucket.uploads.id
+
+  block_public_acls       = true
+  ignore_public_acls      = true
+  block_public_policy     = true
+  restrict_public_buckets = false
+}
+
 # SQS
 resource "aws_sqs_queue" "laravel_queue" {
   name = "${local.name_prefix}-queue"
@@ -207,13 +218,13 @@ resource "aws_sqs_queue" "laravel_queue" {
 }
 
 # DynamoDB Table
-resource "aws_dynamodb_table" "sessions" {
-  name         = "${local.name_prefix}-sessions"
+resource "aws_dynamodb_table" "cache" {
+  name         = "${local.name_prefix}-cache"
   billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "session_id"
+  hash_key     = "id"
 
   attribute {
-    name = "session_id"
+    name = "id"
     type = "S"
   }
 
@@ -280,6 +291,24 @@ resource "aws_iam_role_policy_attachment" "ec2_cloudwatch" {
 resource "aws_iam_instance_profile" "ec2_profile" {
   name = "${local.name_prefix}-profile"
   role = aws_iam_role.ec2_role.name
+}
+
+# S3 bucket policy for public read access
+resource "aws_s3_bucket_policy" "uploads_public_read" {
+  bucket = aws_s3_bucket.uploads.id
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Sid       = "PublicReadGetObject",
+        Effect    = "Allow",
+        Principal = "*",
+        Action    = "s3:GetObject",
+        Resource  = "${aws_s3_bucket.uploads.arn}/*"
+      }
+    ]
+  })
 }
 
 # Output basic resources
