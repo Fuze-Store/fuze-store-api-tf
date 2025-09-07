@@ -112,7 +112,8 @@ resource "aws_security_group" "ec2_sg" {
   }
 
   tags = {
-    Name = "${local.name_prefix}-ec2-sg"
+    Name        = "${local.name_prefix}-ec2-sg"
+    Environment = var.environment
   }
 }
 
@@ -138,7 +139,8 @@ resource "aws_security_group" "rds_sg" {
   }
 
   tags = {
-    Name = "${local.name_prefix}-rds-sg"
+    Name        = "${local.name_prefix}-rds-sg"
+    Environment = var.environment
   }
 }
 
