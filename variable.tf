@@ -45,6 +45,25 @@ variable "db_password" {
   sensitive   = true
 }
 
+variable "db_backup_retention_period" {
+  description = "RDS backup retention period (in days)"
+  type        = number
+  default     = 0
+}
+
+variable "db_backup_window" {
+  description = "RDS backup window (in UTC)"
+  type        = string
+  default     = "05:00-05:30"
+}
+
+variable "db_multi_az" {
+  description = "Whether to enable Multi-AZ for RDS"
+  type        = bool
+  default     = false
+
+}
+
 variable "my_ip" {
   description = "Your IP address to allow SSH access"
   type        = string

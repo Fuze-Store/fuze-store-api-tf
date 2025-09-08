@@ -170,14 +170,17 @@ module "rds" {
   password                    = var.db_password
   manage_master_user_password = false
   port                        = 3306
-  multi_az                    = false
+  multi_az                    = var.db_multi_az
   publicly_accessible         = false
   skip_final_snapshot         = true
+  deletion_protection         = true # Prevent accidental deletion in production
 
   create_db_subnet_group = true
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
   subnet_ids             = module.vpc.private_subnets
 
+  backup_retention_period = var.db_backup_retention_period
+  backup_window           = var.db_backup_window
   tags = {
     Environment = var.environment
   }
