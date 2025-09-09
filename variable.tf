@@ -61,7 +61,12 @@ variable "db_multi_az" {
   description = "Whether to enable Multi-AZ for RDS"
   type        = bool
   default     = false
+}
 
+variable "rds_allowed_origins" {
+  description = "List of allowed origins for RDS CORS configuration"
+  type        = list(string)
+  default     = ["http://localhost:8081", "https://fuze-store.com", "https://store.fuze-store.com"]
 }
 
 variable "my_ip" {

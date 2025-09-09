@@ -204,6 +204,18 @@ resource "aws_s3_bucket_versioning" "uploads" {
   }
 }
 
+resource "aws_s3_bucket_cors_configuration" "uploads_cors" {
+  bucket = aws_s3_bucket.uploads.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["GET", "HEAD", "PUT", "POST"]
+    allowed_origins = var.rds_allowed_origins
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3000
+  }
+}
+
 # SQS
 resource "aws_sqs_queue" "laravel_queue" {
   name = "${local.name_prefix}-queue"
