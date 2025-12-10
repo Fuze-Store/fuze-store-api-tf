@@ -45,7 +45,7 @@ module "vpc" {
 # EC2 Instance (Laravel App Server)
 resource "aws_instance" "laravel" {
   ami           = var.ami_id
-  instance_type = "t3.micro"
+  instance_type = var.instance_type
   subnet_id     = module.vpc.public_subnets[0]
   key_name      = var.key_pair_name
 
@@ -63,6 +63,31 @@ resource "aws_instance" "laravel" {
 
   tags = {
     Name        = "${local.name_prefix}-ec2"
+    Environment = var.environment
+  }
+}
+
+# EC2 Instance (WebSocket Server)
+resource "aws_instance" "websocket" {
+  ami           = var.socket_ami_id
+  instance_type = var.socket_instance_type
+  subnet_id     = module.vpc.public_subnets[0]
+  key_name      = var.key_pair_name
+
+  vpc_security_group_ids      = [aws_security_group.ec2_sg.id]
+  associate_public_ip_address = true
+  iam_instance_profile        = aws_iam_instance_profile.ec2_profile.name
+
+  # Optional: use this to trigger reboot if user data changes
+  user_data_replace_on_change = true
+
+  metadata_options {
+    http_tokens   = "required" # Require IMDSv2
+    http_endpoint = "enabled"  # Enable IMDS (usually enabled)
+  }
+
+  tags = {
+    Name        = "${local.name_prefix}-websocket-ec2"
     Environment = var.environment
   }
 }
@@ -152,24 +177,25 @@ resource "aws_eip" "ec2_eip" {
   }
 }
 
-# RDS MySQL
+# RDS Postgres
 module "rds" {
   source  = "terraform-aws-modules/rds/aws"
-  version = "6.12.0"
+  version = "6.13.1"
 
   identifier           = "${local.name_prefix}-db"
-  engine               = "mariadb"
-  engine_version       = "11.4.7"
-  major_engine_version = "11.4"
-  family               = "mariadb11.4"
-  instance_class       = "db.t3.micro"
+  engine               = "postgres"
+  engine_version       = "18.1"
+  major_engine_version = "18"
+  family               = "postgres18"
+  instance_class       = var.db_instance_class
 
-  allocated_storage           = 20
+  allocated_storage           = var.db_allocated_storage
+  storage_type                = var.db_storage_type
   db_name                     = var.db_name
   username                    = var.db_user
   password                    = var.db_password
   manage_master_user_password = false
-  port                        = 3306
+  port                        = 5432
   multi_az                    = var.db_multi_az
   publicly_accessible         = false
   skip_final_snapshot         = true

@@ -21,10 +21,44 @@ variable "ami_id" {
   type        = string
   default     = "ami-08e7e250e7e3deb9b"
 }
+variable "instance_type" {
+  description = "EC2 instance type"
+  type        = string
+  default     = "t3.micro"
+}
+
+variable "socket_ami_id" {
+  description = "AMI ID for WebSocket EC2 instance"
+  type        = string
+  default     = "ami-05348ce3050db385a"
+}
+
+variable "socket_instance_type" {
+  description = "EC2 instance type for WebSocket"
+  type        = string
+  default     = "t4g.micro"
+}
 
 variable "key_pair_name" {
   description = "Name of the EC2 key pair"
   type        = string
+}
+
+variable "db_instance_class" {
+  description = "RDS instance class"
+  type        = string
+  default     = "db.t4g.micro"
+}
+
+variable "db_allocated_storage" {
+  description = "RDS allocated storage (in GB)"
+  type        = number
+  default     = 20
+}
+variable "db_storage_type" {
+  description = "RDS storage type"
+  type        = string
+  default     = "gp2"
 }
 
 variable "db_name" {

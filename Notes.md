@@ -26,4 +26,4 @@
 terraform init -reconfigure -backend-config=envs/{environment}/backend.hcl
 terraform plan -var-file=envs/{environment}/terraform.tfvars
 terraform apply -var-file=envs/{environment}/terraform.tfvars
-
+terraform destroy -var-file=envs/{environment}/terraform.tfvars
