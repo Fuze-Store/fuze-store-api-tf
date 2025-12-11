@@ -104,6 +104,14 @@ resource "aws_security_group" "ec2_sg" {
 
   ingress {
     description = "SSH"
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "SSH"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
@@ -149,9 +157,9 @@ resource "aws_security_group" "rds_sg" {
   vpc_id      = module.vpc.vpc_id
 
   ingress {
-    description     = "MySQL from EC2 SG"
-    from_port       = 3306
-    to_port         = 3306
+    description     = "Postgres from EC2 SG"
+    from_port       = 5432
+    to_port         = 5432
     protocol        = "tcp"
     security_groups = [aws_security_group.ec2_sg.id]
   }
@@ -171,6 +179,14 @@ resource "aws_security_group" "rds_sg" {
 
 resource "aws_eip" "ec2_eip" {
   instance = aws_instance.laravel.id
+
+  tags = {
+    Environment = var.environment
+  }
+}
+
+resource "aws_eip" "ec2_websocket_eip" {
+  instance = aws_instance.websocket.id
 
   tags = {
     Environment = var.environment
@@ -364,6 +380,10 @@ output "vpc_id" {
 
 output "ec2_public_ip" {
   value = aws_instance.laravel.public_ip
+}
+
+output "ec2_websocket_public_ip" {
+  value = aws_instance.websocket.public_ip
 }
 
 output "rds_endpoint" {
