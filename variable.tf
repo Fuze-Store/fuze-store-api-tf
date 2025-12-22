@@ -102,9 +102,3 @@ variable "rds_allowed_origins" {
   type        = list(string)
   default     = ["http://localhost:8081", "https://fuze-store.com", "https://store.fuze-store.com"]
 }
-
-variable "my_ip" {
-  description = "Your IP address to allow SSH access"
-  type        = string
-  default     = "0.0.0.0/0" # Replace this with your real IP later
-}
