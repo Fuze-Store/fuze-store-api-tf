@@ -147,4 +147,4 @@ terraform destroy -var-file=envs/{environment}/terraform.tfvars
 
 ## License
 
-This project is intended for internal use. Please review and update the license as appropriate for your organization.
+This project is intended for internal use. Please review and update the license as appropriate for your organization..
