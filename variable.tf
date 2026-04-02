@@ -64,13 +64,13 @@ variable "db_storage_type" {
 variable "db_name" {
   description = "RDS database name"
   type        = string
-  default     = "laravel_db"
+  default     = "fuze"
 }
 
 variable "db_user" {
   description = "RDS master username"
   type        = string
-  default     = "admin"
+  default     = "postgres"
 }
 
 variable "db_password" {
@@ -82,7 +82,7 @@ variable "db_password" {
 variable "db_backup_retention_period" {
   description = "RDS backup retention period (in days)"
   type        = number
-  default     = 0
+  default     = 7
 }
 
 variable "db_backup_window" {
@@ -97,8 +97,26 @@ variable "db_multi_az" {
   default     = false
 }
 
-variable "rds_allowed_origins" {
-  description = "List of allowed origins for RDS CORS configuration"
+variable "db_skip_final_snapshot" {
+  description = "Whether to skip the final snapshot when the RDS instance is deleted. Set to false for production safety."
+  type        = bool
+  default     = false
+}
+
+variable "s3_force_destroy" {
+  description = "Whether to allow Terraform to destroy the S3 bucket even if it contains objects. Set to true only for dev/test."
+  type        = bool
+  default     = false
+}
+
+variable "ssh_allowed_cidr_blocks" {
+  description = "CIDR blocks allowed to SSH into EC2 instances. Restrict to your IP/VPN for production."
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
+
+variable "s3_cors_allowed_origins" {
+  description = "List of allowed origins for S3 CORS configuration"
   type        = list(string)
   default     = ["http://localhost:8081", "https://fuze-store.com", "https://store.fuze-store.com"]
 }

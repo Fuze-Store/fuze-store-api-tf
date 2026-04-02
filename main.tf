@@ -12,7 +12,6 @@ terraform {
 provider "aws" {
   region  = var.aws_region
   profile = var.aws_profile
-  alias   = "dev"
 }
 
 locals {
@@ -71,7 +70,7 @@ resource "aws_instance" "laravel" {
 resource "aws_instance" "websocket" {
   ami           = var.socket_ami_id
   instance_type = var.socket_instance_type
-  subnet_id     = module.vpc.public_subnets[0]
+  subnet_id     = module.vpc.public_subnets[1]
   key_name      = var.key_pair_name
 
   vpc_security_group_ids      = [aws_security_group.ec2_sg.id]
@@ -104,18 +103,10 @@ resource "aws_security_group" "ec2_sg" {
 
   ingress {
     description = "SSH"
-    from_port   = 5432
-    to_port     = 5432
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    description = "SSH"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = var.ssh_allowed_cidr_blocks
   }
 
   # Allow HTTP (optional)
@@ -153,7 +144,7 @@ resource "aws_security_group" "ec2_sg" {
 # RDS Security Group
 resource "aws_security_group" "rds_sg" {
   name        = "${local.name_prefix}-rds-sg"
-  description = "Allow MySQL access from EC2 SG only"
+  description = "Allow PostgreSQL access from EC2 SG only"
   vpc_id      = module.vpc.vpc_id
 
   ingress {
@@ -181,6 +172,7 @@ resource "aws_eip" "ec2_eip" {
   instance = aws_instance.laravel.id
 
   tags = {
+    Name        = "${local.name_prefix}-ec2-eip"
     Environment = var.environment
   }
 }
@@ -189,6 +181,7 @@ resource "aws_eip" "ec2_websocket_eip" {
   instance = aws_instance.websocket.id
 
   tags = {
+    Name        = "${local.name_prefix}-websocket-eip"
     Environment = var.environment
   }
 }
@@ -205,17 +198,18 @@ module "rds" {
   family               = "postgres18"
   instance_class       = var.db_instance_class
 
-  allocated_storage           = var.db_allocated_storage
-  storage_type                = var.db_storage_type
-  db_name                     = var.db_name
-  username                    = var.db_user
-  password                    = var.db_password
-  manage_master_user_password = false
-  port                        = 5432
-  multi_az                    = var.db_multi_az
-  publicly_accessible         = false
-  skip_final_snapshot         = true
-  deletion_protection         = true # Prevent accidental deletion in production
+  allocated_storage                = var.db_allocated_storage
+  storage_type                     = var.db_storage_type
+  db_name                          = var.db_name
+  username                         = var.db_user
+  password                         = var.db_password
+  manage_master_user_password      = false
+  port                             = 5432
+  multi_az                         = var.db_multi_az
+  publicly_accessible              = false
+  skip_final_snapshot              = var.db_skip_final_snapshot
+  final_snapshot_identifier_prefix = var.db_skip_final_snapshot ? null : "${local.name_prefix}-db-final"
+  deletion_protection              = true # Prevent accidental deletion in production
 
   create_db_subnet_group = true
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
@@ -223,6 +217,15 @@ module "rds" {
 
   backup_retention_period = var.db_backup_retention_period
   backup_window           = var.db_backup_window
+  
+  # Disable forced SSL (Soketi pg client doesn't support SSL)
+  parameters = [
+    {
+      name  = "rds.force_ssl"
+      value = "0"
+    }
+  ]
+  
   tags = {
     Environment = var.environment
   }
@@ -231,7 +234,7 @@ module "rds" {
 # S3 Bucket
 resource "aws_s3_bucket" "uploads" {
   bucket        = "${local.name_prefix}-uploads"
-  force_destroy = true
+  force_destroy = var.s3_force_destroy
 
   tags = {
     Environment = var.environment
@@ -252,9 +255,19 @@ resource "aws_s3_bucket_cors_configuration" "uploads_cors" {
   cors_rule {
     allowed_headers = ["*"]
     allowed_methods = ["GET", "HEAD", "PUT", "POST"]
-    allowed_origins = var.rds_allowed_origins
+    allowed_origins = var.s3_cors_allowed_origins
     expose_headers  = ["ETag"]
     max_age_seconds = 3000
+  }
+}
+
+# SQS Dead Letter Queue
+resource "aws_sqs_queue" "laravel_queue_dlq" {
+  name                      = "${local.name_prefix}-queue-dlq"
+  message_retention_seconds = 1209600 # 14 days
+
+  tags = {
+    Environment = var.environment
   }
 }
 
@@ -262,9 +275,24 @@ resource "aws_s3_bucket_cors_configuration" "uploads_cors" {
 resource "aws_sqs_queue" "laravel_queue" {
   name = "${local.name_prefix}-queue"
 
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.laravel_queue_dlq.arn
+    maxReceiveCount     = 5
+  })
+
   tags = {
     Environment = var.environment
   }
+}
+
+# SQS Redrive Allow Policy
+resource "aws_sqs_queue_redrive_allow_policy" "dlq_allow" {
+  queue_url = aws_sqs_queue.laravel_queue_dlq.id
+
+  redrive_allow_policy = jsonencode({
+    redrivePermission = "byQueue"
+    sourceQueueArns   = [aws_sqs_queue.laravel_queue.arn]
+  })
 }
 
 # DynamoDB Table
@@ -276,6 +304,11 @@ resource "aws_dynamodb_table" "cache" {
   attribute {
     name = "id"
     type = "S"
+  }
+
+  ttl {
+    attribute_name = "expires_at"
+    enabled        = true
   }
 
   tags = {
@@ -301,40 +334,76 @@ resource "aws_iam_role" "ec2_role" {
   })
 }
 
-# Attach EC2 permissions
-resource "aws_iam_role_policy_attachment" "ec2_attach" {
-  role       = aws_iam_role.ec2_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2FullAccess"
-}
+# Least-privilege policy for EC2 instances
+resource "aws_iam_role_policy" "ec2_policy" {
+  name = "${local.name_prefix}-ec2-policy"
+  role = aws_iam_role.ec2_role.id
 
-# Attach S3 permissions
-resource "aws_iam_role_policy_attachment" "ec2_s3" {
-  role       = aws_iam_role.ec2_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
-}
-
-# Attach SQS permissions
-resource "aws_iam_role_policy_attachment" "ec2_sqs" {
-  role       = aws_iam_role.ec2_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonSQSFullAccess"
-}
-
-# Attach RDS permissions
-resource "aws_iam_role_policy_attachment" "ec2_rds" {
-  role       = aws_iam_role.ec2_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonRDSFullAccess"
-}
-
-# Attach DynamoDB permissions
-resource "aws_iam_role_policy_attachment" "ec2_dynamodb" {
-  role       = aws_iam_role.ec2_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
-}
-
-# Attach CloudWatch Logs permissions
-resource "aws_iam_role_policy_attachment" "ec2_cloudwatch" {
-  role       = aws_iam_role.ec2_role.name
-  policy_arn = "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "S3Access"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:ListBucket"
+        ]
+        Resource = [
+          aws_s3_bucket.uploads.arn,
+          "${aws_s3_bucket.uploads.arn}/*"
+        ]
+      },
+      {
+        Sid    = "SQSAccess"
+        Effect = "Allow"
+        Action = [
+          "sqs:SendMessage",
+          "sqs:ReceiveMessage",
+          "sqs:DeleteMessage",
+          "sqs:GetQueueAttributes",
+          "sqs:GetQueueUrl",
+          "sqs:ChangeMessageVisibility"
+        ]
+        Resource = [
+          aws_sqs_queue.laravel_queue.arn,
+          aws_sqs_queue.laravel_queue_dlq.arn
+        ]
+      },
+      {
+        Sid    = "DynamoDBAccess"
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:Query",
+          "dynamodb:Scan",
+          "dynamodb:BatchGetItem",
+          "dynamodb:BatchWriteItem"
+        ]
+        Resource = [
+          aws_dynamodb_table.cache.arn,
+          "${aws_dynamodb_table.cache.arn}/index/*"
+        ]
+      },
+      {
+        Sid    = "CloudWatchLogsAccess"
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogGroups",
+          "logs:DescribeLogStreams"
+        ]
+        Resource = ["arn:aws:logs:${var.aws_region}:*:*"]
+      }
+    ]
+  })
 }
 
 # Instance Profile to link IAM Role to EC2
@@ -388,6 +457,46 @@ output "ec2_websocket_public_ip" {
 
 output "rds_endpoint" {
   value = module.rds.db_instance_endpoint
+}
+
+output "ec2_eip" {
+  description = "Elastic IP address for the Laravel EC2 instance"
+  value       = aws_eip.ec2_eip.public_ip
+}
+
+output "ec2_websocket_eip" {
+  description = "Elastic IP address for the WebSocket EC2 instance"
+  value       = aws_eip.ec2_websocket_eip.public_ip
+}
+
+output "s3_bucket_name" {
+  description = "Name of the S3 uploads bucket"
+  value       = aws_s3_bucket.uploads.id
+}
+
+output "s3_bucket_arn" {
+  description = "ARN of the S3 uploads bucket"
+  value       = aws_s3_bucket.uploads.arn
+}
+
+output "sqs_queue_url" {
+  description = "URL of the SQS queue for Laravel jobs"
+  value       = aws_sqs_queue.laravel_queue.url
+}
+
+output "sqs_queue_arn" {
+  description = "ARN of the SQS queue for Laravel jobs"
+  value       = aws_sqs_queue.laravel_queue.arn
+}
+
+output "sqs_dlq_url" {
+  description = "URL of the SQS dead letter queue"
+  value       = aws_sqs_queue.laravel_queue_dlq.url
+}
+
+output "dynamodb_table_name" {
+  description = "Name of the DynamoDB cache table"
+  value       = aws_dynamodb_table.cache.name
 }
 
 # Data source for AZs
