@@ -261,7 +261,12 @@ resource "aws_s3_bucket_cors_configuration" "uploads_cors" {
   }
 }
 
-# SQS Dead Letter Queue
+# Laravel queue names (one SQS queue per name; matches onQueue(...) usage in apps/api)
+locals {
+  laravel_queues = toset(["default", "mail", "receipts", "broadcasts"])
+}
+
+# SQS Dead Letter Queue (shared across all Laravel queues)
 resource "aws_sqs_queue" "laravel_queue_dlq" {
   name                      = "${local.name_prefix}-queue-dlq"
   message_retention_seconds = 1209600 # 14 days
@@ -271,28 +276,45 @@ resource "aws_sqs_queue" "laravel_queue_dlq" {
   }
 }
 
-# SQS
+# SQS work queues — one per Laravel queue name.
+# Naming convention: fuze-store-{env}-queue-{name} (matches the DLQ prefix).
+# Laravel code stays short via `config('queue.names.<key>')` (see apps/api/config/queue.php),
+# resolved at runtime by prepending SQS_QUEUE_PREFIX (e.g. "fuze-store-dev-queue-").
 resource "aws_sqs_queue" "laravel_queue" {
-  name = "${local.name_prefix}-queue"
+  for_each = local.laravel_queues
+
+  name = "${local.name_prefix}-queue-${each.key}"
+
+  tags = {
+    Environment = var.environment
+    QueueName   = each.key
+  }
+}
+
+# SQS Redrive Allow Policy — DLQ accepts redrives from every laravel_queue.
+# Must be applied before any redrive_policy on the work queues, otherwise
+# CreateQueue / SetQueueAttributes is rejected with "RedriveAllowPolicy ... prevents you from completing this request".
+resource "aws_sqs_queue_redrive_allow_policy" "dlq_allow" {
+  queue_url = aws_sqs_queue.laravel_queue_dlq.id
+
+  redrive_allow_policy = jsonencode({
+    redrivePermission = "byQueue"
+    sourceQueueArns   = [for q in aws_sqs_queue.laravel_queue : q.arn]
+  })
+}
+
+# SQS Redrive Policy — attached after dlq_allow so the DLQ already permits these source queues
+resource "aws_sqs_queue_redrive_policy" "laravel_queue_redrive" {
+  for_each = local.laravel_queues
+
+  queue_url = aws_sqs_queue.laravel_queue[each.key].id
 
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.laravel_queue_dlq.arn
     maxReceiveCount     = 5
   })
 
-  tags = {
-    Environment = var.environment
-  }
-}
-
-# SQS Redrive Allow Policy
-resource "aws_sqs_queue_redrive_allow_policy" "dlq_allow" {
-  queue_url = aws_sqs_queue.laravel_queue_dlq.id
-
-  redrive_allow_policy = jsonencode({
-    redrivePermission = "byQueue"
-    sourceQueueArns   = [aws_sqs_queue.laravel_queue.arn]
-  })
+  depends_on = [aws_sqs_queue_redrive_allow_policy.dlq_allow]
 }
 
 # DynamoDB Table
@@ -367,10 +389,10 @@ resource "aws_iam_role_policy" "ec2_policy" {
           "sqs:GetQueueUrl",
           "sqs:ChangeMessageVisibility"
         ]
-        Resource = [
-          aws_sqs_queue.laravel_queue.arn,
-          aws_sqs_queue.laravel_queue_dlq.arn
-        ]
+        Resource = concat(
+          [for q in aws_sqs_queue.laravel_queue : q.arn],
+          [aws_sqs_queue.laravel_queue_dlq.arn]
+        )
       },
       {
         Sid    = "DynamoDBAccess"
@@ -479,14 +501,14 @@ output "s3_bucket_arn" {
   value       = aws_s3_bucket.uploads.arn
 }
 
-output "sqs_queue_url" {
-  description = "URL of the SQS queue for Laravel jobs"
-  value       = aws_sqs_queue.laravel_queue.url
+output "sqs_queue_urls" {
+  description = "Map of Laravel queue name -> SQS queue URL"
+  value       = { for k, q in aws_sqs_queue.laravel_queue : k => q.url }
 }
 
-output "sqs_queue_arn" {
-  description = "ARN of the SQS queue for Laravel jobs"
-  value       = aws_sqs_queue.laravel_queue.arn
+output "sqs_queue_arns" {
+  description = "Map of Laravel queue name -> SQS queue ARN"
+  value       = { for k, q in aws_sqs_queue.laravel_queue : k => q.arn }
 }
 
 output "sqs_dlq_url" {

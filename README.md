@@ -35,9 +35,51 @@ This repository contains Terraform configurations to provision and manage common
 ## Prerequisites
 
 - [Terraform](https://www.terraform.io/downloads.html) >= 1.3.0
-- AWS CLI configured with appropriate profiles and permissions
+- AWS CLI configured with the profile referenced in your `terraform.tfvars` (SSO or static credentials). See [AWS authentication](#aws-authentication).
 - An existing EC2 key pair in your AWS account
 
+## AWS authentication
+
+Terraform uses the `aws_profile` value from `envs/{env}/terraform.tfvars` (e.g. `fuze-store-dev` in dev). The provider in `main.tf` sets `profile = var.aws_profile`, so a matching profile must exist in your `~/.aws/config` (SSO or static credentials). When both a profile and `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` are set in the shell, the **profile wins** and env vars are ignored.
+
+### Profile setup
+
+- Set `aws_profile` in `envs/{env}/terraform.tfvars` to match your AWS CLI profile name (dev example: `fuze-store-dev`).
+- Confirm the profile exists:
+
+  ```sh
+  aws configure list --profile {profile}
+  ```
+
+### Before every plan/apply (SSO profiles)
+
+SSO sessions expire and must be refreshed before running Terraform:
+
+```sh
+aws sso login --profile {profile}
+aws sts get-caller-identity --profile {profile}
+```
+
+### Credential conflicts
+
+- If `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are set in the shell while a profile is configured in tfvars, the AWS SDK uses the profile and emits a warning.
+- Use one credential source: either log in via the profile, or unset env vars when relying on a profile.
+
+  ```sh
+  unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+  ```
+
+### Troubleshooting
+
+| Symptom                                                       | Action                                                                                                                                                            |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `InvalidGrantException` / `refresh cached SSO token failed`   | Run `aws sso login --profile {profile}` again                                                                                                                     |
+| `No valid credential sources found`                           | Confirm the profile name in `terraform.tfvars`; verify with `aws sts get-caller-identity --profile {profile}`                                                     |
+| SSO login still fails                                         | Check `~/.aws/config` for `sso_start_url`, `sso_region`, `sso_account_id`, `sso_role_name`. Clear stale cache: `rm -rf ~/.aws/sso/cache/*` then log in again      |
+
+### Notes
+
+- Renamed SQS outputs in state (`sqs_queue_url` → `sqs_queue_urls`) may appear as output-only diffs in `terraform plan`; these do not change infrastructure.
 
 ## Remote State Setup (S3 & DynamoDB)
 
@@ -85,7 +127,10 @@ aws dynamodb create-table --table-name terraform-locks-{environment} --attribute
 2. **Select your environment:**
    - Edit or create `envs/dev/terraform.tfvars` or `envs/prod/terraform.tfvars` with environment-specific values (e.g., `key_pair_name`, `db_password`).
 
-3. **Initialize Terraform:**
+3. **Authenticate with AWS:**
+   - For SSO profiles, run `aws sso login --profile {profile}` before each session. See [AWS authentication](#aws-authentication) for the full setup and troubleshooting steps.
+
+4. **Initialize Terraform:**
 
    ```sh
    terraform init -backend-config=envs/dev/backend.hcl
@@ -93,7 +138,7 @@ aws dynamodb create-table --table-name terraform-locks-{environment} --attribute
    # terraform init -backend-config=envs/prod/backend.hcl
    ```
 
-4. **Plan the deployment:**
+5. **Plan the deployment:**
 
    ```sh
    terraform plan -var-file=envs/dev/terraform.tfvars
@@ -101,7 +146,7 @@ aws dynamodb create-table --table-name terraform-locks-{environment} --attribute
    # terraform plan -var-file=envs/prod/terraform.tfvars
    ```
 
-5. **Apply the configuration:**
+6. **Apply the configuration:**
 
    ```sh
    terraform apply -var-file=envs/dev/terraform.tfvars
@@ -109,7 +154,7 @@ aws dynamodb create-table --table-name terraform-locks-{environment} --attribute
    # terraform apply -var-file=envs/prod/terraform.tfvars
    ```
 
-6. **Destroy resources (when needed):**
+7. **Destroy resources (when needed):**
 
    ```sh
    terraform destroy -var-file=envs/dev/terraform.tfvars
