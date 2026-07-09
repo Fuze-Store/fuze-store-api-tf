@@ -120,3 +120,73 @@ variable "s3_cors_allowed_origins" {
   type        = list(string)
   default     = ["http://localhost:8081", "https://fuze-store.com", "https://store.fuze-store.com"]
 }
+
+# --------------------
+# Observability
+# --------------------
+
+variable "alert_email" {
+  description = "Email address subscribed to the CloudWatch/SNS alerts topic. Leave empty to skip the subscription."
+  type        = string
+  default     = ""
+}
+
+# --------------------
+# RDS tuning (PostgreSQL parameter group)
+# --------------------
+
+variable "db_storage_encrypted" {
+  description = "Encrypt RDS storage at rest with the default AWS KMS key. Should be true in production."
+  type        = bool
+  default     = true
+}
+
+variable "db_performance_insights_enabled" {
+  description = "Enable RDS Performance Insights (7-day retention is free tier)."
+  type        = bool
+  default     = true
+}
+
+variable "db_statement_timeout_ms" {
+  description = "PostgreSQL statement_timeout in milliseconds. Caps runaway queries so a slow report can't starve the register hot path. 0 disables."
+  type        = number
+  default     = 15000
+}
+
+variable "db_idle_in_transaction_timeout_ms" {
+  description = "PostgreSQL idle_in_transaction_session_timeout in milliseconds. Releases connections stuck mid-transaction. 0 disables."
+  type        = number
+  default     = 60000
+}
+
+variable "db_log_min_duration_ms" {
+  description = "PostgreSQL log_min_duration_statement in milliseconds. Logs any statement slower than this for slow-query visibility. -1 disables."
+  type        = number
+  default     = 500
+}
+
+# --------------------
+# SQS
+# --------------------
+
+variable "sqs_default_visibility_timeout" {
+  description = "Visibility timeout (seconds) for standard work queues."
+  type        = number
+  default     = 30
+}
+
+variable "sqs_slow_visibility_timeout" {
+  description = "Visibility timeout (seconds) for slow-job queues (receipts PDF render, broadcasts). Must exceed the longest job runtime to avoid double-processing."
+  type        = number
+  default     = 120
+}
+
+# --------------------
+# EC2 / EBS backups
+# --------------------
+
+variable "ebs_snapshot_retention_days" {
+  description = "Number of daily EBS snapshots (via DLM) to retain for the EC2 instances."
+  type        = number
+  default     = 7
+}

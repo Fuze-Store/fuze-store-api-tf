@@ -63,6 +63,7 @@ resource "aws_instance" "laravel" {
   tags = {
     Name        = "${local.name_prefix}-ec2"
     Environment = var.environment
+    Backup      = "true" # targeted by the DLM daily-snapshot policy (see monitoring.tf)
   }
 }
 
@@ -88,6 +89,7 @@ resource "aws_instance" "websocket" {
   tags = {
     Name        = "${local.name_prefix}-websocket-ec2"
     Environment = var.environment
+    Backup      = "true" # targeted by the DLM daily-snapshot policy (see monitoring.tf)
   }
 }
 
@@ -200,6 +202,7 @@ module "rds" {
 
   allocated_storage                = var.db_allocated_storage
   storage_type                     = var.db_storage_type
+  storage_encrypted                = var.db_storage_encrypted
   db_name                          = var.db_name
   username                         = var.db_user
   password                         = var.db_password
@@ -211,21 +214,46 @@ module "rds" {
   final_snapshot_identifier_prefix = var.db_skip_final_snapshot ? null : "${local.name_prefix}-db-final"
   deletion_protection              = true # Prevent accidental deletion in production
 
+  # Performance Insights — query visibility (7-day retention is free tier)
+  performance_insights_enabled          = var.db_performance_insights_enabled
+  performance_insights_retention_period = var.db_performance_insights_enabled ? 7 : null
+
   create_db_subnet_group = true
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
   subnet_ids             = module.vpc.private_subnets
 
   backup_retention_period = var.db_backup_retention_period
   backup_window           = var.db_backup_window
-  
-  # Disable forced SSL (Soketi pg client doesn't support SSL)
+
+  # Custom parameter group for production safety + observability.
+  # - rds.force_ssl = 0: the Soketi pg client can't do TLS (RDS is private-subnet + SG-locked, so acceptable).
+  # - statement_timeout / idle_in_transaction_session_timeout: cap runaway queries + stuck transactions
+  #   so a slow report can't starve the register hot path.
+  # - log_min_duration_statement: slow-query log for the observability floor.
+  # - timezone = UTC: durable session timezone (the app pins UTC per-connection; this makes it stick).
   parameters = [
     {
       name  = "rds.force_ssl"
       value = "0"
+    },
+    {
+      name  = "statement_timeout"
+      value = tostring(var.db_statement_timeout_ms)
+    },
+    {
+      name  = "idle_in_transaction_session_timeout"
+      value = tostring(var.db_idle_in_transaction_timeout_ms)
+    },
+    {
+      name  = "log_min_duration_statement"
+      value = tostring(var.db_log_min_duration_ms)
+    },
+    {
+      name  = "timezone"
+      value = "UTC"
     }
   ]
-  
+
   tags = {
     Environment = var.environment
   }
@@ -261,9 +289,56 @@ resource "aws_s3_bucket_cors_configuration" "uploads_cors" {
   }
 }
 
+# --------------------
+# Private receipts bucket (BIR top-up / official receipts)
+# The app writes receipts here and serves them via short-lived presigned URLs
+# (config('fuze.business.receipt_storage_disk'), RenderTopUpReceiptPdfJob).
+# NEVER public — unlike the uploads bucket.
+# --------------------
+resource "aws_s3_bucket" "receipts" {
+  bucket        = "${local.name_prefix}-receipts"
+  force_destroy = false # never force-destroy compliance records
+
+  tags = {
+    Environment = var.environment
+    Purpose     = "receipts"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "receipts" {
+  bucket                  = aws_s3_bucket.receipts.id
+  block_public_acls       = true
+  ignore_public_acls      = true
+  block_public_policy     = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_versioning" "receipts" {
+  bucket = aws_s3_bucket.receipts.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "receipts" {
+  bucket = aws_s3_bucket.receipts.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+    bucket_key_enabled = true
+  }
+}
+
 # Laravel queue names (one SQS queue per name; matches onQueue(...) usage in apps/api)
 locals {
   laravel_queues = toset(["default", "mail", "receipts", "broadcasts"])
+
+  # Slow-job queues get a longer SQS visibility timeout so a long render/broadcast
+  # isn't redelivered mid-flight and double-processed.
+  slow_queues = toset(["receipts", "broadcasts"])
 }
 
 # SQS Dead Letter Queue (shared across all Laravel queues)
@@ -284,6 +359,8 @@ resource "aws_sqs_queue" "laravel_queue" {
   for_each = local.laravel_queues
 
   name = "${local.name_prefix}-queue-${each.key}"
+
+  visibility_timeout_seconds = contains(local.slow_queues, each.key) ? var.sqs_slow_visibility_timeout : var.sqs_default_visibility_timeout
 
   tags = {
     Environment = var.environment
@@ -375,7 +452,9 @@ resource "aws_iam_role_policy" "ec2_policy" {
         ]
         Resource = [
           aws_s3_bucket.uploads.arn,
-          "${aws_s3_bucket.uploads.arn}/*"
+          "${aws_s3_bucket.uploads.arn}/*",
+          aws_s3_bucket.receipts.arn,
+          "${aws_s3_bucket.receipts.arn}/*"
         ]
       },
       {
@@ -499,6 +578,16 @@ output "s3_bucket_name" {
 output "s3_bucket_arn" {
   description = "ARN of the S3 uploads bucket"
   value       = aws_s3_bucket.uploads.arn
+}
+
+output "receipts_bucket_name" {
+  description = "Name of the private S3 receipts bucket (BIR receipts, presigned-URL access)"
+  value       = aws_s3_bucket.receipts.id
+}
+
+output "receipts_bucket_arn" {
+  description = "ARN of the private S3 receipts bucket"
+  value       = aws_s3_bucket.receipts.arn
 }
 
 output "sqs_queue_urls" {
