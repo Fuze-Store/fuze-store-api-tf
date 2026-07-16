@@ -43,6 +43,7 @@ locals {
     "GOOGLE_CLIENT_SECRET",
     "FACEBOOK_CLIENT_SECRET",
     "SENTRY_LARAVEL_DSN",
+    "POSTHOG_API_KEY", # PostHog product analytics (ADR 0047) — public write-only project key, but SSM-managed like every credential
     "SMS_API_KEY",
     "SMS_API_SECRET",
     "MOVIDER_API_KEY",
