@@ -504,6 +504,17 @@ resource "aws_iam_role_policy" "ec2_policy" {
         Resource = ["arn:aws:logs:${var.aws_region}:*:*"]
       },
       {
+        # Transactional email via the Laravel `ses` mailer (see ses.tf) —
+        # the SDK authenticates with this instance role, no SMTP credentials.
+        Sid    = "SESSend"
+        Effect = "Allow"
+        Action = [
+          "ses:SendEmail",
+          "ses:SendRawEmail"
+        ]
+        Resource = [aws_sesv2_email_identity.domain.arn]
+      },
+      {
         # Read-only access to this environment's app secrets (see ssm.tf).
         # SecureStrings use the AWS-managed aws/ssm KMS key, so no extra
         # kms:Decrypt grant is needed.
