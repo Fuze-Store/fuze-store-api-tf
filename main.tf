@@ -195,7 +195,7 @@ module "rds" {
 
   identifier           = "${local.name_prefix}-db"
   engine               = "postgres"
-  engine_version       = "18.1"
+  engine_version       = "18.3" # live dev DB auto-minor-upgraded past the old 18.1 pin; AWS forbids downgrades
   major_engine_version = "18"
   family               = "postgres18"
   instance_class       = var.db_instance_class
