@@ -32,8 +32,6 @@ locals {
     "APP_PREVIOUS_KEYS", # rotation grace: holds the prior APP_KEY(s) so old ciphertext still decrypts
     "DB_PASSWORD",
     "LOG_SLACK_WEBHOOK_URL",
-    "MAIL_USERNAME",
-    "MAIL_PASSWORD",
     "PUSHER_APP_ID",
     "PUSHER_APP_KEY",
     "PUSHER_APP_SECRET",
