@@ -122,6 +122,16 @@ variable "s3_cors_allowed_origins" {
 }
 
 # --------------------
+# SES
+# --------------------
+
+variable "ses_domain" {
+  description = "Domain to verify as an SES sending identity (transactional email)"
+  type        = string
+  default     = "fuze-store.com"
+}
+
+# --------------------
 # Observability
 # --------------------
 

@@ -35,8 +35,9 @@ This repo provisions AWS infrastructure (ap-southeast-1) for a **Laravel API wit
 - **S3 bucket** — file uploads with versioning, public read access, CORS configured
 - **SQS queue** — Laravel background job processing
 - **DynamoDB table** — application cache (PAY_PER_REQUEST)
-- **IAM** — EC2 role with managed policies for S3, SQS, RDS, DynamoDB, CloudWatch Logs
+- **IAM** — EC2 role with managed policies for S3, SQS, RDS, DynamoDB, CloudWatch Logs, and read-only SSM parameter access (`/fuze-store/{env}/*`)
 - **Security groups** — EC2 SG (SSH, HTTP, HTTPS, PostgreSQL ingress); RDS SG (PostgreSQL from EC2 SG only)
+- **SSM Parameter Store** (`ssm.tf`) — SecureString **shells** for app secrets under `/fuze-store/{env}/api/*` (Laravel) and `/fuze-store/{env}/websocket/*` (Soketi). Terraform manages existence only: every parameter is created as `PLACEHOLDER` with `lifecycle.ignore_changes = [value]`, so real values never touch tfvars, git, or state. Seed real values with `scripts/seed-ssm.sh <dev|prod> <api|websocket> <env-file> [aws-profile]` (fills only still-PLACEHOLDER params; `--overwrite-all` to re-seed). Consumers render `.env` at deploy via the EC2 instance role: `apps/api/scripts/render-env.sh` (fuze-store monorepo, called from `deploy.sh`) and `render-env.sh` in fuze-store-cloud-server. Both safe-skip (keep the existing `.env`) while any param is unseeded. Adding a new secret = add the name to the list in `ssm.tf`, apply, seed.
 
 ### Key patterns
 

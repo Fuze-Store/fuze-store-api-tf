@@ -195,7 +195,7 @@ module "rds" {
 
   identifier           = "${local.name_prefix}-db"
   engine               = "postgres"
-  engine_version       = "18.1"
+  engine_version       = "18.3" # live dev DB auto-minor-upgraded past the old 18.1 pin; AWS forbids downgrades
   major_engine_version = "18"
   family               = "postgres18"
   instance_class       = var.db_instance_class
@@ -502,6 +502,31 @@ resource "aws_iam_role_policy" "ec2_policy" {
           "logs:DescribeLogStreams"
         ]
         Resource = ["arn:aws:logs:${var.aws_region}:*:*"]
+      },
+      {
+        # Transactional email via the Laravel `ses` mailer (see ses.tf) —
+        # the SDK authenticates with this instance role, no SMTP credentials.
+        Sid    = "SESSend"
+        Effect = "Allow"
+        Action = [
+          "ses:SendEmail",
+          "ses:SendRawEmail"
+        ]
+        Resource = [aws_sesv2_email_identity.domain.arn]
+      },
+      {
+        # Read-only access to this environment's app secrets (see ssm.tf).
+        # SecureStrings use the AWS-managed aws/ssm KMS key, so no extra
+        # kms:Decrypt grant is needed.
+        Sid    = "SSMParameterRead"
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameter",
+          "ssm:GetParametersByPath"
+        ]
+        Resource = [
+          "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/fuze-store/${var.environment}/*"
+        ]
       }
     ]
   })
