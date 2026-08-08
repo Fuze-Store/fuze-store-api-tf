@@ -1,0 +1,41 @@
+# Template for envs/prod/terraform.tfvars (which is gitignored).
+#
+#   cp envs/prod/terraform.tfvars.example envs/prod/terraform.tfvars
+#
+# Every value below is non-secret and was verified against the live prod account
+# (206055865485) on 2026-08-08. Keep this file in sync whenever you change the
+# real tfvars — a missing key silently reverts to the default in variable.tf,
+# and two of the defaults below are actively dangerous in production.
+#
+# db_password is deliberately absent. It is marked sensitive in variable.tf, so
+# Terraform prompts for it with hidden input. Or export TF_VAR_db_password.
+#
+# ⚠️  This file is a best-effort reconstruction after the original tfvars was
+#     lost. It may still be missing an override nobody has noticed yet. Review a
+#     full `terraform plan` line by line before any untargeted apply on prod.
+
+aws_profile = "fuze-store-prod"
+
+# CRITICAL: the default is "dev". A wrong value here resolves every resource
+# name to fuze-store-dev-* INSIDE the prod account.
+environment = "prod"
+
+key_pair_name = "fuze-store-prod"
+
+instance_type        = "t3.small"
+socket_instance_type = "t4g.micro"
+ami_id               = "ami-08e7e250e7e3deb9b"
+socket_ami_id        = "ami-05348ce3050db385a"
+
+# CRITICAL: the default is ["0.0.0.0/0"]. Omitting this key opens production
+# SSH to the entire internet. Verified against sg-0901743122f220e74.
+# Note these are operator IPs on a dynamic ISP range and go stale — prefer SSM
+# Session Manager (`ssh fuze-prod`) over widening this list.
+ssh_allowed_cidr_blocks = [
+  "136.158.37.205/32",
+  "175.176.27.44/32",
+]
+
+# CRITICAL: omitting this sets count = 0 in monitoring.tf and DESTROYS the
+# existing confirmed subscription, silencing every production alarm.
+alert_email = "kim@fuze-store.com"

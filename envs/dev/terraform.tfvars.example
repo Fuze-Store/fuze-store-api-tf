@@ -1,0 +1,23 @@
+# Template for envs/dev/terraform.tfvars (which is gitignored).
+#
+#   cp envs/dev/terraform.tfvars.example envs/dev/terraform.tfvars
+#
+# Every value below is non-secret and was verified against the live dev account
+# (762682309609). Keep this file in sync whenever you change the real tfvars —
+# a missing key here silently reverts to the default in variable.tf on apply,
+# which is how the dev alert subscription and instance size were both lost once.
+#
+# db_password is deliberately absent. It is marked sensitive in variable.tf, so
+# Terraform prompts for it with hidden input. Or export TF_VAR_db_password.
+
+aws_profile   = "fuze-store-dev"
+environment   = "dev"
+key_pair_name = "fuze-store-dev"
+
+# t3.micro (the variable.tf default) is 1 GB and OOM-killed PHP until systemd
+# degraded — even with 1 GB of swap. Matches prod.
+instance_type = "t3.small"
+
+# Required, or monitoring.tf creates NO subscription (count = 0) and every dev
+# alarm publishes into an empty SNS topic. Confirm the emailed link after apply.
+alert_email = "kim@fuze-store.com"
