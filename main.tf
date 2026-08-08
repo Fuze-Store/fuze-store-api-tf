@@ -532,6 +532,14 @@ resource "aws_iam_role_policy" "ec2_policy" {
   })
 }
 
+# Session Manager shell access, so SSH/port 22 is not the only way in.
+# Distinct from the ssm:GetParameter grants above: those read Parameter Store,
+# this registers the instance with the SSM service (ssmmessages/ec2messages).
+resource "aws_iam_role_policy_attachment" "ec2_ssm_core" {
+  role       = aws_iam_role.ec2_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
 # Instance Profile to link IAM Role to EC2
 resource "aws_iam_instance_profile" "ec2_profile" {
   name = "${local.name_prefix}-profile"
