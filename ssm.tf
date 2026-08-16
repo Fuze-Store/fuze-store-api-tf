@@ -39,6 +39,14 @@ locals {
     "XENDIT_PUBLIC_KEY",
     "XENDIT_CALLBACK_TOKEN",
     "GOOGLE_CLIENT_SECRET",
+    # Google "Desktop app" OAuth client used by the Fuze Store Hub's browser
+    # sign-in. The Hub ships client IDs only; the code->token exchange runs
+    # server-side (POST /api/v1/social/exchange), so this secret lives here.
+    # Its client ID is NOT a secret and sits in the API's *.base.env files
+    # alongside GOOGLE_CLIENT_ID. Facebook needs no desktop pair — it falls
+    # back to FACEBOOK_CLIENT_SECRET, since Facebook user ids are app-scoped
+    # and the Hub must therefore use the same app as the API anyway.
+    "GOOGLE_DESKTOP_CLIENT_SECRET",
     "FACEBOOK_CLIENT_SECRET",
     "SENTRY_LARAVEL_DSN",
     "POSTHOG_API_KEY", # PostHog product analytics (ADR 0047) — public write-only project key, but SSM-managed like every credential
