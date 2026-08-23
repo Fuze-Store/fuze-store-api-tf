@@ -10,9 +10,14 @@
 # db_password is deliberately absent. It is marked sensitive in variable.tf, so
 # Terraform prompts for it with hidden input. Or export TF_VAR_db_password.
 #
-# ⚠️  This file is a best-effort reconstruction after the original tfvars was
-#     lost. It may still be missing an override nobody has noticed yet. Review a
-#     full `terraform plan` line by line before any untargeted apply on prod.
+# A full `terraform plan` on 2026-08-23 reached ZERO changes against live prod,
+# so this reconstruction is no longer known to be missing an override, and
+# -target is no longer required for routine work. Two perpetual diffs found in
+# the same pass were fixed in main.tf rather than here: user_data now sits under
+# lifecycle.ignore_changes (nothing declares it, and applying the phantom diff
+# would have stopped the instance), and the RDS timezone parameter is pinned to
+# apply_method = "pending-reboot" because it is static — meaning timezone=UTC
+# only activates on the next DB reboot.
 
 aws_profile = "fuze-store-prod"
 
@@ -39,3 +44,18 @@ ssh_allowed_cidr_blocks = [
 # CRITICAL: omitting this sets count = 0 in monitoring.tf and DESTROYS the
 # existing confirmed subscription, silencing every production alarm.
 alert_email = "kim@fuze-store.com"
+
+# CRITICAL: recovered 2026-08-23 from a full `terraform plan` against live prod.
+# Both defaults in variable.tf drag production backwards: db_allocated_storage
+# defaults to 20 against a live 30 (RDS cannot shrink storage, so the apply
+# fails partway through), and db_storage_type defaults to gp2 against a live
+# gp3 (AWS accepts this and downgrades prod storage to a slower class).
+db_allocated_storage = 30
+db_storage_type      = "gp3"
+
+# CRITICAL: the default in variable.tf includes http://localhost:8081, which
+# has no business in the production uploads bucket's CORS allowlist.
+s3_cors_allowed_origins = [
+  "https://fuze-store.com",
+  "https://store.fuze-store.com",
+]

@@ -52,9 +52,6 @@ resource "aws_instance" "laravel" {
   associate_public_ip_address = true
   iam_instance_profile        = aws_iam_instance_profile.ec2_profile.name
 
-  # Optional: use this to trigger reboot if user data changes
-  user_data_replace_on_change = true
-
   metadata_options {
     http_tokens   = "required" # Require IMDSv2
     http_endpoint = "enabled"  # Enable IMDS (usually enabled)
@@ -64,6 +61,14 @@ resource "aws_instance" "laravel" {
     Name        = "${local.name_prefix}-ec2"
     Environment = var.environment
     Backup      = "true" # targeted by the DLM daily-snapshot policy (see monitoring.tf)
+  }
+
+  lifecycle {
+    # user_data is set on the live boxes outside this repo and has never been
+    # declared here, so terraform holds no value for it and plans a phantom
+    # diff against prod. Applying that diff would stop the instance to write
+    # user_data it does not actually have.
+    ignore_changes = [user_data]
   }
 }
 
@@ -78,9 +83,6 @@ resource "aws_instance" "websocket" {
   associate_public_ip_address = true
   iam_instance_profile        = aws_iam_instance_profile.ec2_profile.name
 
-  # Optional: use this to trigger reboot if user data changes
-  user_data_replace_on_change = true
-
   metadata_options {
     http_tokens   = "required" # Require IMDSv2
     http_endpoint = "enabled"  # Enable IMDS (usually enabled)
@@ -90,6 +92,10 @@ resource "aws_instance" "websocket" {
     Name        = "${local.name_prefix}-websocket-ec2"
     Environment = var.environment
     Backup      = "true" # targeted by the DLM daily-snapshot policy (see monitoring.tf)
+  }
+
+  lifecycle {
+    ignore_changes = [user_data] # see aws_instance.laravel
   }
 }
 
@@ -249,8 +255,14 @@ module "rds" {
       value = tostring(var.db_log_min_duration_ms)
     },
     {
-      name  = "timezone"
-      value = "UTC"
+      # timezone is STATIC in RDS Postgres: AWS pins it to pending-reboot no
+      # matter what we send, so leaving apply_method at the module's default
+      # ("immediate") writes successfully and then reverts on the next read —
+      # a perpetual diff. UTC only becomes active after a DB reboot; until
+      # then the app's per-connection UTC pin is what's doing the work.
+      name         = "timezone"
+      value        = "UTC"
+      apply_method = "pending-reboot"
     }
   ]
 
