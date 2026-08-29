@@ -21,3 +21,16 @@ instance_type = "t3.small"
 # Required, or monitoring.tf creates NO subscription (count = 0) and every dev
 # alarm publishes into an empty SNS topic. Confirm the emailed link after apply.
 alert_email = "kim@fuze-store.com"
+
+# Recovered 2026-08-23 from a full plan against live dev. Each is the OPPOSITE
+# of the prod-safe default in variable.tf, so omitting any of them makes dev
+# harder to tear down and rebuild:
+#
+#   - s3_force_destroy: allows destroying the uploads bucket with objects still
+#     in it. NEVER set this in prod.
+#   - db_skip_final_snapshot: no final snapshot when the dev DB is destroyed.
+#   - db_backup_retention_period = 0: automated backups OFF, matching live dev.
+#     Flipping this to nonzero later forces a brief RDS outage — do it on purpose.
+s3_force_destroy           = true
+db_skip_final_snapshot     = true
+db_backup_retention_period = 0
