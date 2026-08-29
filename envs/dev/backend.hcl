@@ -1,6 +1,6 @@
 bucket         = "fuze-store-terraform-states-dev"
 key            = "dev/terraform.tfstate"
 region         = "ap-southeast-1"
-dynamodb_table = "terraform-locks-dev"
+use_lockfile   = true
 encrypt        = true
 profile        = "fuze-store-dev"

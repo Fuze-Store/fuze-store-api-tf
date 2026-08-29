@@ -41,10 +41,22 @@ locals {
     # Manager's "Add Application" is single-select, which is why there are two
     # applications and four keys rather than one pair.
     #
-    # MAYA_PUBLIC_KEY / MAYA_SECRET_KEY are deliberately NOT here. They are the
-    # single-multi-solution-credential fallback and stay blank in the base env
-    # files while the per-family keys are set; add them only if a future
-    # environment is issued one credential serving both families.
+    # BOTH shapes are seedable, because they differ per environment and this
+    # list is shared by all of them. Seed the pair the environment actually
+    # uses and give the other set an empty value in the source env file — the
+    # seed script stores that as the __EMPTY__ sentinel, which renders back as
+    # blank, and config/maya.php treats blank as unset (it uses `?:`, not
+    # env()'s default argument, precisely so that holds).
+    #
+    #   two applications  -> seed the four per-family keys, leave the pair blank
+    #   one multi-solution credential -> seed the pair, leave the four blank
+    #
+    # Every name here must appear in the env file at seed time even when blank.
+    # A name absent from that file stays PLACEHOLDER, and ONE PLACEHOLDER under
+    # the path makes render-env.sh skip the whole .env render — deploys then
+    # keep shipping the previous config while reporting success.
+    "MAYA_PUBLIC_KEY",
+    "MAYA_SECRET_KEY",
     "MAYA_CHECKOUT_PUBLIC_KEY",
     "MAYA_CHECKOUT_SECRET_KEY",
     # Not read by the API — card tokenization is client-side on mobile, which
