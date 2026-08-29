@@ -35,9 +35,26 @@ locals {
     "PUSHER_APP_ID",
     "PUSHER_APP_KEY",
     "PUSHER_APP_SECRET",
-    "XENDIT_SECRET_KEY",
-    "XENDIT_PUBLIC_KEY",
-    "XENDIT_CALLBACK_TOKEN",
+    # Maya Business payment gateway (ADR 0079). One key pair PER API FAMILY:
+    # Maya scopes a credential to one family, so a Checkout key is refused by
+    # /payments/v1/* and a Vault key cannot read a checkout. Maya Business
+    # Manager's "Add Application" is single-select, which is why there are two
+    # applications and four keys rather than one pair.
+    #
+    # MAYA_PUBLIC_KEY / MAYA_SECRET_KEY are deliberately NOT here. They are the
+    # single-multi-solution-credential fallback and stay blank in the base env
+    # files while the per-family keys are set; add them only if a future
+    # environment is issued one credential serving both families.
+    "MAYA_CHECKOUT_PUBLIC_KEY",
+    "MAYA_CHECKOUT_SECRET_KEY",
+    # Not read by the API — card tokenization is client-side on mobile, which
+    # carries its own copy. Held here as the canonical source for that value.
+    "MAYA_VAULT_PUBLIC_KEY",
+    "MAYA_VAULT_SECRET_KEY",
+    # Not issued by Maya — we generate it (openssl rand -hex 32). Maya signs no
+    # webhook, so this URL segment plus the IP allowlist is the ONLY auth on
+    # /webhooks/payments/{token}; a blank value lets anyone forge paid callbacks.
+    "MAYA_WEBHOOK_PATH_TOKEN",
     "GOOGLE_CLIENT_SECRET",
     # Google "Desktop app" OAuth client used by the Fuze Store Hub's browser
     # sign-in. The Hub ships client IDs only; the code->token exchange runs
