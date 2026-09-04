@@ -55,6 +55,11 @@ locals {
     # A name absent from that file stays PLACEHOLDER, and ONE PLACEHOLDER under
     # the path makes render-env.sh skip the whole .env render — deploys then
     # keep shipping the previous config while reporting success.
+    #
+    # PROD IS NOT RECONCILED as of 2026-09-05 — it still holds the XENDIT_*
+    # params and NONE of the MAYA_* ones, so a plain apply there creates seven
+    # PLACEHOLDERs at once. Follow docs/maya-prod-reconciliation.md; do not
+    # improvise the order.
     "MAYA_PUBLIC_KEY",
     "MAYA_SECRET_KEY",
     "MAYA_CHECKOUT_PUBLIC_KEY",
@@ -79,6 +84,39 @@ locals {
     "FACEBOOK_CLIENT_SECRET",
     "SENTRY_LARAVEL_DSN",
     "POSTHOG_API_KEY", # PostHog product analytics (ADR 0047) — public write-only project key, but SSM-managed like every credential
+    # NOT a secret — the public browser-origin allowlist for credentialed CORS
+    # on api/* (config/cors.php). It sits here, against the "non-secret config
+    # lives in the base env file" rule, so a wrong or missing browser origin can
+    # be corrected WITHOUT a code commit. Note SSM is read at DEPLOY time, so a
+    # param edit alone changes nothing — re-run the deploy workflow after it.
+    # Consequence to remember: the value in environments/{env}.base.env is INERT
+    # on deployed environments once this exists, so change BOTH.
+    #
+    # Value must NEVER be "*": config/cors.php sets supports_credentials, so
+    # php-cors skips the wildcard branch and reflects whatever Origin was sent,
+    # handing every site on the internet a credentialed allow.
+    #
+    # SEEDED OUT-OF-BAND 2026-09-05, BEFORE it was added to this list, so it
+    # ALREADY EXISTS with a real value. IMPORT it before the next apply — do NOT
+    # let terraform create it: a create writes PLACEHOLDER over the live value,
+    # and one PLACEHOLDER under this path makes render-env.sh skip the ENTIRE
+    # .env render while deploys keep reporting success. After the import,
+    # ignore_changes = [value] protects the seeded value permanently.
+    #
+    #   terraform init -backend-config=envs/prod/backend.hcl
+    #   terraform import -var-file=envs/prod/terraform.tfvars \
+    #     'aws_ssm_parameter.api_secret["CORS_ALLOWED_ORIGINS"]' \
+    #     /fuze-store/prod/api/CORS_ALLOWED_ORIGINS
+    #
+    # Repeat for dev with envs/dev/* and the /fuze-store/dev/... path.
+    #
+    # The follow-up plan is NOT "No changes" — expect ONE in-place update that
+    # drops the hand-written description and flips the Terraform tag false ->
+    # true (dev, 2026-09-05). That is cosmetic; apply it or let the next full
+    # apply pick it up. What matters is that `value` MUST NOT appear in the
+    # diff: ignore_changes keeps it hidden among the unchanged attributes. If
+    # you ever see value -> "PLACEHOLDER", STOP and do not apply.
+    "CORS_ALLOWED_ORIGINS",
     "SMS_API_KEY",
     "SMS_API_SECRET",
     "MOVIDER_API_KEY",
