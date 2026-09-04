@@ -208,7 +208,7 @@ variable "github_repository" {
 }
 
 variable "deploy_branch" {
-  description = "The ONLY branch whose workflow runs may assume the deploy role. dev -> development, prod -> production."
+  description = "Override the branch allowed to assume the deploy role. Leave null: it derives from `environment`, so a prod apply cannot silently trust the development branch just because the gitignored tfvars lacked a line."
   type        = string
-  default     = "development"
+  default     = null
 }

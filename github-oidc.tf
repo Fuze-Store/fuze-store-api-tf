@@ -19,6 +19,17 @@
 
 # `data.aws_caller_identity.current` is already declared in main.tf.
 
+# Derived, not required input. envs/*/terraform.tfvars is gitignored, so a
+# value that HAS to be set there is a value that silently defaults to the wrong
+# thing on a fresh clone — and here the wrong thing is a production role that
+# trusts the development branch.
+locals {
+  deploy_branch = coalesce(
+    var.deploy_branch,
+    var.environment == "prod" ? "production" : "development",
+  )
+}
+
 # GitHub's OIDC issuer. The thumbprint list is deliberately omitted: since 2023
 # AWS validates GitHub's endpoint against its own trust store, and pinning a
 # leaf thumbprint here would silently break every deploy the day GitHub rotates
@@ -60,7 +71,7 @@ resource "aws_iam_role" "github_actions_deploy" {
         Condition = {
           StringEquals = {
             "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-            "token.actions.githubusercontent.com:sub" = "repo:${var.github_repository}:ref:refs/heads/${var.deploy_branch}"
+            "token.actions.githubusercontent.com:sub" = "repo:${var.github_repository}:ref:refs/heads/${local.deploy_branch}"
           }
         }
       }
