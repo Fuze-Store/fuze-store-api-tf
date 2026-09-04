@@ -200,3 +200,15 @@ variable "ebs_snapshot_retention_days" {
   type        = number
   default     = 7
 }
+
+variable "github_repository" {
+  description = "owner/repo allowed to assume the GitHub Actions deploy role."
+  type        = string
+  default     = "sherlock003/fuze-store"
+}
+
+variable "deploy_branch" {
+  description = "The ONLY branch whose workflow runs may assume the deploy role. dev -> development, prod -> production."
+  type        = string
+  default     = "development"
+}
