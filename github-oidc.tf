@@ -51,11 +51,25 @@ resource "aws_iam_openid_connect_provider" "github" {
 
 # The role a deploy run assumes.
 #
-# The trust condition is the whole security boundary, so it is scoped to one
-# repo AND one branch. `repo:<owner>/<repo>:ref:refs/heads/<branch>` means a
-# workflow on any other branch — or a fork — cannot assume this role even
-# though the OIDC provider is account-wide. Without the `sub` condition any
-# GitHub repo on earth could assume it.
+# The trust condition is the whole security boundary. Two claims are pinned
+# because neither is sufficient alone:
+#
+#   sub              — a job that declares `environment:` gets
+#                      `repo:<owner>/<repo>:environment:<name>`, NOT the
+#                      `ref:refs/heads/<branch>` form. Pinning the ref form
+#                      instead fails closed with "Not authorized to perform
+#                      sts:AssumeRoleWithWebIdentity", which is how this was
+#                      found. But the environment form names no branch, so on
+#                      its own it would let a workflow on ANY branch that
+#                      targets this environment assume the role.
+#   job_workflow_ref — restores the branch pin, and additionally pins the
+#                      workflow FILE. A new workflow, or the same workflow on
+#                      another branch, does not match.
+#
+# The matching GitHub Environment also carries a deployment-branch policy
+# allowing only its own branch, so the branch is enforced on both sides.
+# Without any `sub` condition at all, any GitHub repo on earth could assume
+# this role.
 resource "aws_iam_role" "github_actions_deploy" {
   name = "${local.name_prefix}-github-actions-deploy"
 
@@ -70,8 +84,9 @@ resource "aws_iam_role" "github_actions_deploy" {
         Action = "sts:AssumeRoleWithWebIdentity"
         Condition = {
           StringEquals = {
-            "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-            "token.actions.githubusercontent.com:sub" = "repo:${var.github_repository}:ref:refs/heads/${local.deploy_branch}"
+            "token.actions.githubusercontent.com:aud"              = "sts.amazonaws.com"
+            "token.actions.githubusercontent.com:sub"              = "repo:${var.github_repository}:environment:${local.deploy_branch}"
+            "token.actions.githubusercontent.com:job_workflow_ref" = "${var.github_repository}/.github/workflows/deploy-api.yml@refs/heads/${local.deploy_branch}"
           }
         }
       }
