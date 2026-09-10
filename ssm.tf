@@ -128,6 +128,23 @@ locals {
     "PAIRING_SIGNING_PRIVATE_KEY",
     "PAIRING_SIGNING_PUBLIC_KEY",
     "PAIRING_SIGNING_KEY_ID",
+    # Shared secret the API sends as a Bearer token when it asks the landing
+    # app to drop its cached copy of one store (`RevalidateStorefrontJob` ->
+    # landing `/api/revalidate/store`). The storefront body is server-rendered
+    # now, so without this call a store that turns `discoverable` off keeps
+    # serving its name, hours and contact channels from landing's cache for up
+    # to 300s. The SAME value must be set on the landing Vercel project
+    # (`fuze-store`): Preview + git branch `development` for dev, Production for
+    # prod. Set both or neither — the API alone produces a 404 per store edit.
+    #
+    # Dev was seeded out-of-band (2026-09-10) and IMPORTED, not created:
+    #   terraform import -var-file=envs/dev/terraform.tfvars \
+    #     'aws_ssm_parameter.api_secret["STOREFRONT_REVALIDATE_SECRET"]' \
+    #     /fuze-store/dev/api/STOREFRONT_REVALIDATE_SECRET
+    # Prod does not have it yet: seed it BEFORE the apply that adds this name,
+    # or import it the same way — a create writes PLACEHOLDER, and one
+    # PLACEHOLDER under the path makes render-env.sh skip the whole .env.
+    "STOREFRONT_REVALIDATE_SECRET",
   ])
 
   # Soketi WebSocket server secrets. The SOKETI_DEFAULT_APP_* values MUST
