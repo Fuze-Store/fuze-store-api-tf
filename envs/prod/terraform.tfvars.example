@@ -59,3 +59,11 @@ s3_cors_allowed_origins = [
   "https://fuze-store.com",
   "https://store.fuze-store.com",
 ]
+
+# Root EBS size for both EC2 instances (default 8 GB = the AMI size, see
+# variable.tf). Prod runs 12: 8 GB filled to 100% on the websocket box on
+# 2026-09-08 (toolchain + swapfile + unattended-upgrade downloads). Dev stays
+# at the default — it carries far less. ~0.096 USD/GB/month per volume. EBS
+# can grow, never shrink; after raising it, growpart runs on the next boot
+# (or run it live, see CLAUDE.md).
+ec2_root_volume_size = 12

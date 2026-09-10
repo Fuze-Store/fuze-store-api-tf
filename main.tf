@@ -52,6 +52,19 @@ resource "aws_instance" "laravel" {
   associate_public_ip_address = true
   iam_instance_profile        = aws_iam_instance_profile.ec2_profile.name
 
+  # Declared so the size is a one-line tfvars change instead of a console edit.
+  # The AMI's 8 GB filled to 100% on prod websocket on 2026-09-08 (toolchain +
+  # 2 GB swapfile + unattended-upgrade downloads, no autoclean); nginx then
+  # 500'd every broadcast body over its 8 KB buffer and the SSM agent stopped
+  # executing. Kept at 8 for cost; ec2-hygiene.tf + the disk alarm are the
+  # guard. Raising it is an in-place EBS modify (no stop) but grows the DEVICE
+  # only — cloud-init runs growpart+resize2fs on the next boot, or finish live
+  # with `sudo growpart /dev/nvme0n1 1 && sudo resize2fs /dev/root`.
+  root_block_device {
+    volume_size = var.ec2_root_volume_size
+    volume_type = "gp3"
+  }
+
   metadata_options {
     http_tokens   = "required" # Require IMDSv2
     http_endpoint = "enabled"  # Enable IMDS (usually enabled)
@@ -82,6 +95,19 @@ resource "aws_instance" "websocket" {
   vpc_security_group_ids      = [aws_security_group.ec2_sg.id]
   associate_public_ip_address = true
   iam_instance_profile        = aws_iam_instance_profile.ec2_profile.name
+
+  # Declared so the size is a one-line tfvars change instead of a console edit.
+  # The AMI's 8 GB filled to 100% on prod websocket on 2026-09-08 (toolchain +
+  # 2 GB swapfile + unattended-upgrade downloads, no autoclean); nginx then
+  # 500'd every broadcast body over its 8 KB buffer and the SSM agent stopped
+  # executing. Kept at 8 for cost; ec2-hygiene.tf + the disk alarm are the
+  # guard. Raising it is an in-place EBS modify (no stop) but grows the DEVICE
+  # only — cloud-init runs growpart+resize2fs on the next boot, or finish live
+  # with `sudo growpart /dev/nvme0n1 1 && sudo resize2fs /dev/root`.
+  root_block_device {
+    volume_size = var.ec2_root_volume_size
+    volume_type = "gp3"
+  }
 
   metadata_options {
     http_tokens   = "required" # Require IMDSv2
@@ -550,6 +576,14 @@ resource "aws_iam_role_policy" "ec2_policy" {
 resource "aws_iam_role_policy_attachment" "ec2_ssm_core" {
   role       = aws_iam_role.ec2_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+# CloudWatch agent: PutMetricData for the disk/memory metrics the EC2 alarms in
+# monitoring.tf read (see ec2-hygiene.tf). Reading its config parameter is
+# already covered by the SSMParameterRead statement above.
+resource "aws_iam_role_policy_attachment" "ec2_cloudwatch_agent" {
+  role       = aws_iam_role.ec2_role.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
 }
 
 # Instance Profile to link IAM Role to EC2

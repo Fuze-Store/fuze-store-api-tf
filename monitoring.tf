@@ -1,7 +1,7 @@
 # ============================================================================
 # Observability & backups
 #  - SNS alerts topic (+ optional email subscription)
-#  - CloudWatch alarms: SQS DLQ/backlog, RDS, EC2 status + CPU, DynamoDB throttle
+#  - CloudWatch alarms: SQS DLQ/backlog, RDS, EC2 status + CPU + disk + memory, DynamoDB throttle
 #  - DLM daily EBS snapshots for both EC2 instances
 # ============================================================================
 
@@ -217,6 +217,57 @@ resource "aws_cloudwatch_metric_alarm" "ec2_cpu_high" {
   period              = 300
   evaluation_periods  = 3
   threshold           = 85
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "missing"
+
+  dimensions = {
+    InstanceId = each.value
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+
+  tags = { Environment = var.environment }
+}
+
+# Root filesystem usage, from the CloudWatch agent (ec2-hygiene.tf). This is
+# the alarm that did not exist on 2026-09-08 when prod websocket hit 100%.
+# Dimensions are InstanceId only — the agent's aggregation_dimensions rollup —
+# so the alarm is independent of device/fstype names.
+resource "aws_cloudwatch_metric_alarm" "ec2_disk_high" {
+  for_each = local.ec2_instances
+
+  alarm_name          = "${local.name_prefix}-ec2-${each.key}-disk-high"
+  alarm_description   = "EC2 ${each.key} root filesystem above ${var.ec2_disk_alarm_threshold}% (apt-get clean / shrink swapfile / grow the volume before it hits 100% and nginx + SSM stop working)."
+  namespace           = "CWAgent"
+  metric_name         = "disk_used_percent"
+  statistic           = "Maximum"
+  period              = 300
+  evaluation_periods  = 2
+  threshold           = var.ec2_disk_alarm_threshold
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "missing"
+
+  dimensions = {
+    InstanceId = each.value
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+
+  tags = { Environment = var.environment }
+}
+
+resource "aws_cloudwatch_metric_alarm" "ec2_memory_high" {
+  for_each = local.ec2_instances
+
+  alarm_name          = "${local.name_prefix}-ec2-${each.key}-memory-high"
+  alarm_description   = "EC2 ${each.key} memory sustained above ${var.ec2_memory_alarm_threshold}% (1 GB boxes; PHP/soketi OOM territory)."
+  namespace           = "CWAgent"
+  metric_name         = "mem_used_percent"
+  statistic           = "Average"
+  period              = 300
+  evaluation_periods  = 3
+  threshold           = var.ec2_memory_alarm_threshold
   comparison_operator = "GreaterThanThreshold"
   treat_missing_data  = "missing"
 

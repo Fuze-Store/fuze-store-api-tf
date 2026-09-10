@@ -34,3 +34,9 @@ alert_email = "kim@fuze-store.com"
 s3_force_destroy           = true
 db_skip_final_snapshot     = true
 db_backup_retention_period = 0
+
+# Root EBS size for both EC2 instances. Dev deliberately stays on the 8 GB
+# default (it carries far less than prod, which runs 12 — see
+# envs/prod/terraform.tfvars.example). The disk alarm + hygiene association in
+# ec2-hygiene.tf are the guard. Uncomment only to go larger.
+# ec2_root_volume_size = 12

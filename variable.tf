@@ -212,3 +212,21 @@ variable "deploy_branch" {
   type        = string
   default     = null
 }
+
+variable "ec2_root_volume_size" {
+  description = "Root EBS volume size (GB) for both EC2 instances. Defaults to the AMI's 8 GB (the live size) so the block plans no change; raise it per env in tfvars when the disk alarm keeps firing. EBS can grow but never shrink."
+  type        = number
+  default     = 8
+}
+
+variable "ec2_disk_alarm_threshold" {
+  description = "disk_used_percent (root fs, via the CloudWatch agent) above which the EC2 disk alarm fires."
+  type        = number
+  default     = 80
+}
+
+variable "ec2_memory_alarm_threshold" {
+  description = "mem_used_percent (via the CloudWatch agent) above which the EC2 memory alarm fires."
+  type        = number
+  default     = 90
+}
